@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{% block title %}E-Signature App{% endblock %}</title>
+    <style>
+        /* Color Palette */
+        :root {
+            --bg-white: #FFFFFF;
+            --bg-light: #F1F5F9;
+            --primary: #2563EB;
+            --accent: #38BDF8;
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --border: #E2E8F0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-light);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--text-primary);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--bg-white);
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(15, 23, 42, 0.1);
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        header {
+            background: var(--primary);
+            color: var(--bg-white);
+            padding: 30px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        nav {
+            background: var(--bg-light);
+            padding: 15px 30px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        nav a {
+            color: var(--primary);
+            text-decoration: none;
+            margin-right: 20px;
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        nav a:hover {
+            background: var(--primary);
+            color: var(--bg-white);
+        }
+
+        .content {
+            padding: 40px;
+            background: var(--bg-white);
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: var(--primary);
+            color: var(--bg-white);
+            text-decoration: none;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+
+        .btn:hover {
+            background: #1D4ED8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--text-secondary);
+        }
+
+        .btn-secondary:hover {
+            background: #475569;
+        }
+
+        .btn-danger {
+            background: #EF4444;
+        }
+
+        .btn-danger:hover {
+            background: #DC2626;
+        }
+
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+
+        .alert-success {
+            background: #DCFCE7;
+            color: #166534;
+            border: 1px solid #BBF7D0;
+        }
+
+        .alert-error {
+            background: #FEE2E2;
+            color: #991B1B;
+            border: 1px solid #FECACA;
+        }
+
+        .card {
+            background: var(--bg-white);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+            border: 1px solid var(--border);
+        }
+
+        .card h3 {
+            color: var(--primary);
+            margin-bottom: 15px;
+        }
+
+        footer {
+            background: var(--bg-light);
+            padding: 20px;
+            text-align: center;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border);
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📝 E-Signature Application</h1>
+            <p>Upload, Sign, and Manage Your DOCX and PDF Documents with AI-Powered Signature Placement</p>
+        </header>
+
+        <nav>
+            <a href="{% url 'index' %}">🏠 Dashboard</a>
+            <a href="{% url 'create_signature' %}">✍️ Create Signature</a>
+            {% if user.is_authenticated %}
+                <span style="float: right;">
+                    Hello, {{ user.username }}
+                    <form method="post" action="{% url 'logout' %}" style="display: inline; margin-left: 10px;">
+                        {% csrf_token %}
+                        <button type="submit" style="background: transparent; border: none; color: var(--primary); cursor: pointer; padding: 8px 12px; font-weight: 600;">Logout</button>
+                    </form>
+                </span>
+            {% else %}
+                <a href="{% url 'login' %}">Login</a>
+            {% endif %}
+        </nav>
+
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+
+        <footer>
+            <p>&copy; 2026 E-Signature App | Built with Django, Python, and LangChain</p>
+        </footer>
+    </div>
+
+    {% block extra_js %}{% endblock %}
+    <script>
+        // CSRF helper: read cookie and set X-CSRFToken header for fetch/XHR
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        const csrftoken = getCookie('csrftoken');
+
+        // If using fetch, applications can include this header globally by wrapping fetch
+        const _fetch = window.fetch;
+        window.fetch = function(input, init={}) {
+            init = init || {};
+            init.headers = init.headers || {};
+            // Ensure cookies are sent for same-origin requests
+            if (!init.credentials) {
+                init.credentials = 'same-origin';
+            }
+            if (!init.headers['X-CSRFToken'] && csrftoken) {
+                init.headers['X-CSRFToken'] = csrftoken;
+            }
+            return _fetch(input, init);
+        };
+
+        // Also add to XMLHttpRequest for older code
+        (function(open) {
+            XMLHttpRequest.prototype.open = function(method, url, async, user, pass) {
+                this._method = method;
+                return open.apply(this, arguments);
+            };
+        })(XMLHttpRequest.prototype.open);
+
+        (function(send) {
+            XMLHttpRequest.prototype.send = function(data) {
+                if (this._method && this._method.toUpperCase() !== 'GET' && csrftoken) {
+                    this.setRequestHeader('X-CSRFToken', csrftoken);
+                }
+                return send.apply(this, arguments);
+            };
+        })(XMLHttpRequest.prototype.send);
+    </script>
+</body>
+</html>

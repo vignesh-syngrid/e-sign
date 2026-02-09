@@ -1,0 +1,116 @@
+/* Custom styles for eSignature admin */
+.button {
+    padding: 6px 12px !important;
+    border-radius: 4px !important;
+    text-decoration: none !important;
+    font-size: 13px !important;
+    font-weight: normal !important;
+    display: inline-block !important;
+    margin: 0 2px !important;
+}
+
+.button:hover {
+    text-decoration: none !important;
+}
+
+.column-send_invitation_button {
+    width: 150px !important;
+}
+
+.column-send_invitation_button a.button {
+    background-color: #007bff !important;
+    color: white !important;
+    border: 1px solid #007bff !important;
+}
+
+.column-send_invitation_button a.button:hover {
+    background-color: #0056b3 !important;
+    border-color: #0056b3 !important;
+}
+
+/* Bulk action styling */
+.option {
+    padding: 8px 12px !important;
+}
+
+/* Form styling improvements */
+.form-row {
+    margin-bottom: 15px !important;
+}
+
+.vTextField {
+    padding: 8px 12px !important;
+    border: 1px solid #ccc !important;
+    border-radius: 4px !important;
+}
+
+.vTextField:focus {
+    border-color: #007bff !important;
+    box-shadow: 0 0 0 2px rgba(0,123,255,.25) !important;
+}
+
+/* Alert/info box styling */
+.alert {
+    padding: 15px !important;
+    margin-bottom: 20px !important;
+    border: 1px solid transparent !important;
+    border-radius: 4px !important;
+}
+
+.alert-info {
+    background-color: #d1ecf1 !important;
+    border-color: #bee5eb !important;
+    color: #0c5460 !important;
+}
+
+/* Module styling */
+.module {
+    margin-bottom: 20px !important;
+    background: white !important;
+    border: 1px solid #ddd !important;
+    border-radius: 4px !important;
+}
+
+.module h1, .module h2 {
+    padding: 10px 15px !important;
+    margin: 0 !important;
+    background: #f5f5f5 !important;
+    border-bottom: 1px solid #ddd !important;
+    font-size: 18px !important;
+    font-weight: bold !important;
+}
+
+.module > div {
+    padding: 15px !important;
+}
+
+/* Submit row styling */
+.submit-row {
+    padding: 15px !important;
+    background: #f5f5f5 !important;
+    border-top: 1px solid #ddd !important;
+    text-align: right !important;
+}
+
+.submit-row input[type="submit"] {
+    padding: 8px 16px !important;
+    margin-left: 10px !important;
+    border: none !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+}
+
+.submit-row .cancel-link {
+    padding: 8px 16px !important;
+    margin-left: 10px !important;
+    text-decoration: none !important;
+    border-radius: 4px !important;
+    color: white !important;
+}
+
+/* Help text styling */
+.help {
+    color: #6c757d !important;
+    font-size: 12px !important;
+    margin-top: 5px !important;
+}

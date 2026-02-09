@@ -1,0 +1,56 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Send Document Invitation{% endblock %}
+
+{% block content %}
+<div class="module">
+    <h1>📧 Send Document Invitation</h1>
+    
+    <div class="alert alert-info">
+        <h2><strong>Document:</strong> {{ document.title }}</h2>
+        <p><strong>Uploaded by:</strong> {{ document.user|default:"Unknown user" }}</p>
+        <p><strong>Status:</strong> {{ document.status|capfirst }}</p>
+        <p><strong>Uploaded on:</strong> {{ document.uploaded_at|date:"F d, Y \a\t g:i A" }}</p>
+    </div>
+    
+    <form method="post">
+        {% csrf_token %}
+        
+        <fieldset class="module aligned">
+            <h2>Recipient Information</h2>
+            <div class="form-row">
+                <div>
+                    <label for="recipient_email" style="font-weight: bold;">📧 Recipient Email:</label>
+                    <input type="email" name="recipient_email" id="recipient_email" required class="vTextField" style="width: 100%; max-width: 400px;">
+                    <div class="help">Enter the email address where the invitation will be sent</div>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div>
+                    <label for="recipient_name" style="font-weight: bold;">👤 Recipient Name (Optional):</label>
+                    <input type="text" name="recipient_name" id="recipient_name" class="vTextField" style="width: 100%; max-width: 400px;">
+                    <div class="help">Enter the recipient's name for personalization in the email</div>
+                </div>
+            </div>
+        </fieldset>
+        
+        <div class="submit-row">
+            <input type="submit" value="📤 Send Invitation" class="default" style="background: #28a745;">
+            <a href="{% url 'admin:esign_app_document_changelist' %}" class="button cancel-link" style="background: #6c757d;">❌ Cancel</a>
+        </div>
+    </form>
+    
+    <div class="module" style="margin-top: 20px; background: #f8f9fa; border-left: 4px solid #007bff;">
+        <h2>📋 Invitation Details</h2>
+        <ul style="padding-left: 20px;">
+            <li>📧 The recipient will receive a professional email with a secure link to sign the document</li>
+            <li>⏰ Invitations automatically expire after 7 days for security</li>
+            <li>🔒 Each invitation token can only be used once</li>
+            <li>🔐 Recipients must log in to access and sign the document</li>
+            <li>📊 You can track invitation status in the Document Invitations section</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

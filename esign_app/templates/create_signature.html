@@ -1,0 +1,252 @@
+{% extends 'base.html' %}
+
+{% block title %}Create Signature - E-Signature App{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 800px; margin: 0 auto;">
+    <h2 style="text-align: center; color: #667eea; margin-bottom: 30px;">✍️ Create Your Signature</h2>
+    
+    <div id="alertContainer"></div>
+    
+    <!-- Signature Type Selection -->
+    <div style="display: flex; gap: 20px; margin-bottom: 30px; justify-content: center;">
+        <button onclick="showDrawSignature()" class="btn" id="drawBtn">✏️ Draw Signature</button>
+        <button onclick="showUploadSignature()" class="btn btn-secondary" id="uploadBtn">📤 Upload Image</button>
+    </div>
+    
+    <!-- Draw Signature Section -->
+    <div id="drawSection">
+        {% csrf_token %}
+        <h3 style="color: #667eea; margin-bottom: 20px;">Draw Your Signature</h3>
+        
+        <div style="border: 2px solid #667eea; border-radius: 8px; background: white; margin-bottom: 20px;">
+            <canvas id="signatureCanvas" width="700" height="200" style="display: block; cursor: crosshair; touch-action: none;"></canvas>
+        </div>
+        
+        <div style="text-align: center; margin-bottom: 20px;">
+            <button onclick="clearCanvas()" class="btn btn-secondary">🗑️ Clear</button>
+            <button onclick="saveDrawnSignature()" class="btn">💾 Save Signature</button>
+        </div>
+        
+        <p style="text-align: center; color: #6c757d; font-size: 0.9em;">
+            Use your mouse or touch screen to draw your signature above
+        </p>
+    </div>
+    
+    <!-- Upload Signature Section -->
+    <div id="uploadSection" style="display: none;">
+        <h3 style="color: #667eea; margin-bottom: 20px;">Upload Signature Image</h3>
+        
+        <form id="uploadSignatureForm" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="signature_type" value="uploaded">
+            
+            <div style="border: 2px dashed #667eea; border-radius: 5px; padding: 40px; text-align: center; background: #f8f9fa; margin-bottom: 20px;">
+                <input type="file" name="signature_file" id="signatureFile" accept="image/*" required style="display: none;">
+                <label for="signatureFile" style="cursor: pointer;">
+                    <div style="font-size: 3em; margin-bottom: 10px;">🖼️</div>
+                    <p style="color: #667eea; font-weight: 600;">Click to select image file</p>
+                    <p style="color: #6c757d; font-size: 0.9em; margin-top: 5px;">PNG, JPG, or GIF format</p>
+                </label>
+                <div id="imagePreview" style="margin-top: 20px;"></div>
+            </div>
+            
+            <div style="text-align: center;">
+                <button type="submit" class="btn">💾 Save Signature</button>
+            </div>
+        </form>
+    </div>
+    
+    <div style="text-align: center; margin-top: 20px;">
+        <a href="{% url 'index' %}" class="btn btn-secondary">← Back to Dashboard</a>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const canvas = document.getElementById('signatureCanvas');
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+    let lastX = 0;
+    let lastY = 0;
+    
+    // Canvas setup
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    // Mouse events
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+    
+    // Touch events
+    canvas.addEventListener('touchstart', handleTouchStart, {passive: false});
+    canvas.addEventListener('touchmove', handleTouchMove, {passive: false});
+    canvas.addEventListener('touchend', stopDrawing);
+    
+    function startDrawing(e) {
+        isDrawing = true;
+        const rect = canvas.getBoundingClientRect();
+        lastX = e.clientX - rect.left;
+        lastY = e.clientY - rect.top;
+    }
+    
+    function draw(e) {
+        if (!isDrawing) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        
+        lastX = x;
+        lastY = y;
+    }
+    
+    function stopDrawing() {
+        isDrawing = false;
+    }
+    
+    function handleTouchStart(e) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        isDrawing = true;
+        lastX = touch.clientX - rect.left;
+        lastY = touch.clientY - rect.top;
+    }
+    
+    function handleTouchMove(e) {
+        e.preventDefault();
+        if (!isDrawing) return;
+        
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        
+        lastX = x;
+        lastY = y;
+    }
+    
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    function saveDrawnSignature() {
+        // Check if canvas is empty
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const isEmpty = !imageData.data.some(channel => channel !== 0);
+        
+        if (isEmpty) {
+            showAlert('error', '✗ Please draw your signature first!');
+            return;
+        }
+        
+        const signatureData = canvas.toDataURL('image/png');
+        
+        const formData = new FormData();
+        formData.append('signature_type', 'drawn');
+        formData.append('signature_data', signatureData);
+        
+        fetch('{% url "create_signature" %}', {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', '✓ Signature saved successfully! Redirecting...');
+                setTimeout(() => {
+                    window.location.href = '{% url "index" %}';
+                }, 2000);
+            } else {
+                showAlert('error', `✗ Error: ${data.error}`);
+            }
+        })
+        .catch(error => {
+            showAlert('error', `✗ Error saving signature: ${error}`);
+        });
+    }
+    
+    function showDrawSignature() {
+        document.getElementById('drawSection').style.display = 'block';
+        document.getElementById('uploadSection').style.display = 'none';
+        document.getElementById('drawBtn').className = 'btn';
+        document.getElementById('uploadBtn').className = 'btn btn-secondary';
+    }
+    
+    function showUploadSignature() {
+        document.getElementById('drawSection').style.display = 'none';
+        document.getElementById('uploadSection').style.display = 'block';
+        document.getElementById('drawBtn').className = 'btn btn-secondary';
+        document.getElementById('uploadBtn').className = 'btn';
+    }
+    
+    // Image preview
+    document.getElementById('signatureFile').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('imagePreview').innerHTML = 
+                    `<img src="${e.target.result}" style="max-width: 100%; max-height: 200px; border: 2px solid #dee2e6; border-radius: 5px;">`;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    // Upload form submission
+    document.getElementById('uploadSignatureForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        fetch('{% url "create_signature" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', '✓ Signature uploaded successfully! Redirecting...');
+                setTimeout(() => {
+                    window.location.href = '{% url "index" %}';
+                }, 2000);
+            } else {
+                showAlert('error', `✗ Error: ${data.error}`);
+            }
+        })
+        .catch(error => {
+            showAlert('error', `✗ Error uploading signature: ${error}`);
+        });
+    });
+    
+    function showAlert(type, message) {
+        const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+        document.getElementById('alertContainer').innerHTML = 
+            `<div class="alert ${alertClass}">${message}</div>`;
+    }
+</script>
+{% endblock %}

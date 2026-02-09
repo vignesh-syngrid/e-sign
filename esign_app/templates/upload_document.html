@@ -1,0 +1,197 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Document - E-Signature App{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 0 auto;">
+    <h2 style="text-align: center; color: #667eea; margin-bottom: 30px;">📤 Upload Document</h2>
+    
+    <div id="alertContainer"></div>
+    
+    <form id="uploadForm" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Document Title:</label>
+            <input type="text" name="title" id="title" placeholder="Enter document title" style="width: 100%; padding: 12px; border: 2px solid #dee2e6; border-radius: 5px; font-size: 1em;">
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Select DOCX or PDF File:</label>
+            <div id="dropZone" style="border: 2px dashed #667eea; border-radius: 5px; padding: 40px; text-align: center; background: #f8f9fa; transition: all 0.3s ease;">
+                <input type="file" name="document" id="document" accept=".docx,.pdf" required style="display: none;">
+                <label for="document" style="cursor: pointer;">
+                    <div style="font-size: 3em; margin-bottom: 10px;">📄</div>
+                    <p style="color: #667eea; font-weight: 600;">Click to select DOCX or PDF file</p>
+                    <p style="color: #6c757d; font-size: 0.9em; margin-top: 5px;">or drag and drop here</p>
+                </label>
+                <p id="fileName" style="margin-top: 15px; color: #28a745; font-weight: 600;"></p>
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <p style="background: #e7f3ff; padding: 15px; border-radius: 5px; border-left: 4px solid #667eea;">
+                <strong>📌 Note:</strong> After uploading, our AI will analyze your document and suggest optimal signature placement locations.
+            </p>
+        </div>
+        
+        <div style="text-align: center;">
+            <button type="submit" class="btn" id="uploadBtn">
+                <span id="uploadBtnText">Upload Document</span>
+                <span id="uploadSpinner" style="display: none;">⏳ Uploading...</span>
+            </button>
+            <a href="{% url 'index' %}" class="btn btn-secondary" style="margin-left: 10px;">Cancel</a>
+        </div>
+    </form>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const documentInput = document.getElementById('document');
+    const titleInput = document.getElementById('title');
+    const fileName = document.getElementById('fileName');
+    const uploadForm = document.getElementById('uploadForm');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const uploadBtnText = document.getElementById('uploadBtnText');
+    const uploadSpinner = document.getElementById('uploadSpinner');
+    const alertContainer = document.getElementById('alertContainer');
+    const dropZone = document.getElementById('dropZone');
+    
+    // Show file name when selected
+    documentInput.addEventListener('change', function(e) {
+        if (this.files.length > 0) {
+            const file = this.files[0];
+            fileName.textContent = `Selected: ${file.name}`;
+            
+            // Auto-fill title if empty
+            if (!titleInput.value) {
+                const fileName = file.name;
+                if (fileName.endsWith('.docx')) {
+                    titleInput.value = fileName.replace('.docx', '');
+                } else if (fileName.endsWith('.pdf')) {
+                    titleInput.value = fileName.replace('.pdf', '');
+                } else {
+                    titleInput.value = fileName;
+                }
+            }
+        }
+    });
+    
+    // Drag and drop functionality
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, highlight, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, unhighlight, false);
+    });
+
+    function highlight(e) {
+        dropZone.style.backgroundColor = '#e6f0ff';
+        dropZone.style.borderColor = '#4a90e2';
+        dropZone.style.transform = 'scale(1.02)';
+    }
+
+    function unhighlight(e) {
+        dropZone.style.backgroundColor = '#f8f9fa';
+        dropZone.style.borderColor = '#667eea';
+        dropZone.style.transform = 'scale(1)';
+    }
+
+    // Handle dropped files
+    dropZone.addEventListener('drop', handleDrop, false);
+
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        if (files.length > 0) {
+            // Validate file type
+            const file = files[0];
+            const fileNameLower = file.name.toLowerCase();
+            
+            if (fileNameLower.endsWith('.docx') || fileNameLower.endsWith('.pdf')) {
+                // Set the file to the input element
+                documentInput.files = files;
+                
+                // Show file name
+                fileName.textContent = `Selected: ${file.name}`;
+                
+                // Auto-fill title if empty
+                if (!titleInput.value) {
+                    if (file.name.endsWith('.docx')) {
+                        titleInput.value = file.name.replace('.docx', '');
+                    } else if (file.name.endsWith('.pdf')) {
+                        titleInput.value = file.name.replace('.pdf', '');
+                    } else {
+                        titleInput.value = file.name;
+                    }
+                }
+                
+                // Trigger change event for consistency
+                documentInput.dispatchEvent(new Event('change'));
+            } else {
+                showAlert('error', '✗ Please select a DOCX or PDF file only.');
+            }
+        }
+    }
+    
+    // Handle form submission
+    uploadForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        // Disable button and show spinner
+        uploadBtn.disabled = true;
+        uploadBtnText.style.display = 'none';
+        uploadSpinner.style.display = 'inline';
+        
+        fetch('{% url "upload_document" %}', {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('success', `✓ Document "${data.title}" uploaded successfully! Redirecting to signing page...`);
+                setTimeout(() => {
+                    // Redirect to the signing page for this document
+                    window.location.href = data.redirect_url;
+                }, 2000);
+            } else {
+                showAlert('error', `✗ Error: ${data.error}`);
+                uploadBtn.disabled = false;
+                uploadBtnText.style.display = 'inline';
+                uploadSpinner.style.display = 'none';
+            }
+        })
+        .catch(error => {
+            showAlert('error', `✗ Error uploading document: ${error}`);
+            uploadBtn.disabled = false;
+            uploadBtnText.style.display = 'inline';
+            uploadSpinner.style.display = 'none';
+        });
+    });
+    
+    function showAlert(type, message) {
+        const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+        alertContainer.innerHTML = `<div class="alert ${alertClass}">${message}</div>`;
+    }
+</script>
+{% endblock %}

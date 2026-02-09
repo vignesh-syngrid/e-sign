@@ -1,0 +1,1335 @@
+{% extends 'base.html' %}
+
+{% block title %}Sign Document - E-Signature App{% endblock %}
+
+{% block content %}
+<style>
+
+    
+    .signature-overlay {
+        position: absolute;
+        cursor: move;
+        border: 2px solid transparent;
+        transition: border-color 0.2s;
+    }
+    
+    .signature-overlay:hover {
+        border-color: #667eea;
+    }
+    
+    .signature-preview {
+        cursor: grab;
+        transition: transform 0.2s;
+        border: 2px solid transparent;
+        border-radius: 5px;
+    }
+    
+    .signature-preview:hover {
+        transform: scale(1.02);
+        border-color: #667eea;
+    }
+    
+    .signature-preview.selected {
+        border-color: #667eea;
+        background-color: #e6f0ff;
+    }
+    
+
+    
+    .hidden {
+        display: none !important;
+    }
+</style>
+
+<div class="container">
+    <h2 style="text-align: center; color: #667eea; margin-bottom: 30px;">✍️ Sign Document</h2>
+    
+    <!-- Hidden CSRF token for JS fallback -->
+    <input type="hidden" id="csrfmiddlewaretoken_input" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+
+    <div id="alertContainer"></div>
+    
+    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+        <!-- Left Panel: Signatures - Positioned closer to preview -->
+        <div style="flex: 0 0 250px; background: #f8fafc; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h3 style="margin: 0 0 20px 0; color: #334155; text-align: center;">Your Signatures</h3>
+            
+            {% if signatures %}
+                <div style="display: grid; gap: 15px; max-height: 500px; overflow-y: auto; padding-right: 5px;">
+                    {% for signature in signatures %}
+                        <div class="signature-preview" 
+                             data-signature-id="{{ signature.id }}"
+                             style="background: white; padding: 10px; border-radius: 5px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer;">
+                            <img src="{{ signature.signature_image.url }}" 
+                                 alt="Signature" 
+                                 style="max-width: 100%; max-height: 80px; border-radius: 3px;">
+                            <small style="display: block; margin-top: 5px; color: #64748b;">
+                                {{ signature.signature_type|title }}
+                            </small>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div style="text-align: center; color: #6c757d; padding: 20px;">
+                    <p>No signatures available. <a href="{% url 'create_signature' %}">Create one now</a></p>
+                </div>
+            {% endif %}
+            
+            <!-- Create Signature Button -->
+            <div style="margin-top: 20px; text-align: center;">
+                <a href="{% url 'create_signature' %}" class="btn" style="width: 100%; padding: 10px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; display: inline-block;">
+                    ✏️ Create New Signature
+                </a>
+            </div>
+        </div>
+        
+        <!-- Right Panel: Integrated Document Preview with Signature Placement -->
+        <div style="flex: 1; min-width: 500px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>Sign Document</h3>
+                <a href="{{ document.original_file.url }}" class="btn btn-secondary" style="padding: 8px 15px; font-size: 0.9em;" download>
+                    📥 Download Original
+                </a>
+            </div>
+            
+            <div class="document-preview-container" 
+                 id="documentPreviewContainer">
+            
+                
+                
+                <div id="documentContentArea" style="position: relative; width: 100%; min-height: 600px; background: white; padding: 0; font-family: 'Arial', sans-serif; font-size: 16px; line-height: 1.6; color: #000; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin: 20px auto; max-width: 816px; box-sizing: border-box;">
+                    <!-- Google Drive-style header -->
+                    <div style="padding: 20px 24px; border-bottom: 1px solid #dadce0; background: #fff; border-radius: 8px 8px 0 0;">
+                        <h1 style="margin: 0 0 8px 0; color: #202124; font-size: 24px; font-weight: 400; line-height: 1.4;">{{ document.title }}</h1>
+                        <div style="display: flex; gap: 16px; color: #5f6368; font-size: 14px;">
+                            <span>📄 {{ file_extension|upper }} Document</span>
+                            <span>•</span>
+                            {% if file_extension == 'pdf' %}
+                                <span>{{ doc_info.num_pages }} pages</span>
+                            {% elif file_extension == 'docx' %}
+                                <span>{{ doc_info.num_paragraphs }} paragraphs</span>
+                            {% endif %}
+                            {% if file_extension == 'pdf' or file_extension == 'docx' %}
+                            <!-- Page Navigation Controls -->
+                            <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                                <span>Page:</span>
+                                <select id="currentPageSelector" onchange="changePage(this.value);" style="padding: 4px 8px; border-radius: 4px; border: 1px solid #ccc;">
+                                    <!-- Options will be populated by JavaScript -->
+                                </select>
+                                <button onclick="previousPage()" class="btn" style="padding: 4px 8px; font-size: 0.9em;">←</button>
+                                <button onclick="nextPage()" class="btn" style="padding: 4px 8px; font-size: 0.9em;">→</button>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Signature overlays container - Positioned to overlay the entire document area -->
+                    <div id="signatureOverlays" style="position: absolute; top: 77px; left: 20px; width: calc(100% - 40px); height: calc(100% - 137px); z-index: 10;" onclick="handleDocumentClick(event)"></div>
+                    
+                    <!-- Document content area with Google Drive-style layout -->
+                    <div id="documentContentInner" style="position: relative; width: 100%; min-height: 600px; background: white; padding: 0; font-family: 'Arial', sans-serif; font-size: 16px; line-height: 1.6; color: #000; border: 1px solid #dadce0; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin: 20px auto; max-width: 816px; box-sizing: border-box;">
+                        
+                        <!-- Document content based on file type -->
+                        {% if file_extension == 'pdf' %}
+                            <!-- For PDF, show extracted content in a Google Drive print-like format -->
+                            {% if sections_text %}
+                                {% for page_num, content in sections_text.items %}
+                                    <div class="document-page" data-page-number="{{ page_num }}" style="margin-bottom: 32px; padding: 24px; background: #fff; border: 1px solid #e8eaed; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); page-break-inside: avoid; display: {% if page_num == 1 %}block{% else %}none{% endif %};">
+                                        <div style="font-weight: 500; color: #5f6368; margin-bottom: 16px; font-size: 14px; padding-bottom: 8px; border-bottom: 1px solid #e8eaed; margin-bottom: 20px;">
+                                            Page {{ page_num }}
+                                        </div>
+                                        <div style="white-space: pre-wrap; color: #202124; font-size: 16px; line-height: 1.6; text-align: left;">
+                                            {{ content|linebreaks }}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div style="text-align: center; padding: 80px 20px; color: #5f6368; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dadce0; margin: 20px 0; min-height: 400px; position: relative;">
+                                    <div style="font-size: 3em; margin-bottom: 20px;">📄</div>
+                                    <h3 style="margin: 0 0 15px 0; color: #202124;">PDF Content Preview</h3>
+                                    <p style="margin: 0; font-size: 16px;">Click anywhere to place your signature</p>
+                                    <p style="margin: 10px 0 0 0; font-size: 14px; color: #6c757d;">You can drag signatures to reposition them after placement</p>
+                                </div>
+                            {% endif %}
+                        {% elif file_extension == 'docx' %}
+                            <!-- For DOCX, use the text content in Google Drive print-like format with page simulation -->
+                            {% if sections_text %}
+                                {% for section_num, content in sections_text.items %}
+                                    <div class="document-page" data-page-number="{{ section_num }}" style="margin-bottom: 32px; padding: 24px; background: #fff; border: 1px solid #e8eaed; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); page-break-inside: avoid; min-height: 800px; display: {% if section_num == 1 %}block{% else %}none{% endif %};">
+                                        <div style="font-weight: 500; color: #5f6368; margin-bottom: 16px; font-size: 14px; padding-bottom: 8px; border-bottom: 1px solid #e8eaed; margin-bottom: 20px;">
+                                            Page {{ section_num }}
+                                        </div>
+                                        <div style="white-space: pre-wrap; color: #202124; font-size: 16px; line-height: 1.6; text-align: left;">
+                                            {{ content|linebreaks }}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div style="text-align: center; padding: 80px 20px; color: #5f6368; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dadce0; margin: 20px 0;">
+                                    <div style="font-size: 3em; margin-bottom: 20px;">🔍</div>
+                                    <h3 style="margin: 0 0 15px 0; color: #202124;">Loading document content...</h3>
+                                    <p style="margin: 0; font-size: 16px;">Please wait while we extract the document content.</p>
+                                </div>
+                            {% endif %}
+                        {% else %}
+                            <div style="text-align: center; padding: 80px 20px; color: #5f6368; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dadce0; margin: 20px 0;">
+                                <div style="font-size: 3em; margin-bottom: 20px;">📁</div>
+                                <h3 style="margin: 0 0 15px 0; color: #202124;">{{ document.title }}</h3>
+                                <p style="margin: 0; font-size: 16px;">Content preview not available for this file type.</p>
+                            </div>
+                        {% endif %}
+                    </div> <!-- Close documentContentInner here -->
+                    
+                    <!-- Google Drive-style footer -->
+                    <div style="padding: 16px 24px; border-top: 1px solid #dadce0; background: #f8f9fa; border-radius: 0 0 8px 8px; color: #5f6368; font-size: 12px; text-align: center;">
+                        <div style="display: flex; justify-content: center; gap: 24px; align-items: center;">
+                            <span>Print preview</span>
+                            <span>•</span>
+                            {% if file_extension == 'pdf' or file_extension == 'docx' %}
+                            <span>Page {{ doc_info.num_pages|default:1 }} of {{ doc_info.num_pages|default:1 }}</span>
+                            {% else %}
+                            <span>Document Preview</span>
+                            {% endif %}
+                            <span>•</span>
+                            <span>Signature placement area</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Position controls -->
+            <div class="signature-placement-controls" style="margin-top: 20px; background: #f8fafc; border-radius: 8px; padding: 20px;">
+                <h4 style="margin: 0 0 15px 0; color: #334155;">Signature Position Options</h4>
+                
+                <!-- Current signatures summary -->
+                <div id="signaturesSummary" style="margin-bottom: 20px; padding: 15px; background: #e0f2fe; border-radius: 6px; border-left: 4px solid #0ea5e9; display: none;">
+                    <h5 style="margin: 0 0 10px 0; color: #0c4a6e;">📋 Current Signatures</h5>
+                    <div id="signaturesList" style="font-size: 0.9em; color: #0c4a6e;"></div>
+                </div>
+                
+                <!-- Quick Position Selection -->
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 600;">Quick Position Selection:</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <button type="button" class="btn" style="padding: 12px; background: #dbeafe; color: #1e40af; border: 2px solid #93c5fd; border-radius: 6px; font-weight: 600;" onclick="setPosition('left')">
+                            ← Left Side (End)
+                        </button>
+                        <button type="button" class="btn" style="padding: 12px; background: #dbeafe; color: #1e40af; border: 2px solid #93c5fd; border-radius: 6px; font-weight: 600;" onclick="setPosition('right')">
+                            Right Side (End) →
+                        </button>
+                    </div>
+                    <p style="font-size: 0.85em; color: #64748b; margin: 10px 0 0 0; text-align: center;">
+                        Places signature at the end of the document on selected side
+                    </p>
+                </div>
+                
+                <!-- Manual Position Controls -->
+                <div style="border-top: 1px solid #e2e8f0; padding-top: 15px;">
+                    <h5 style="margin: 0 0 15px 0; color: #475569;">Manual Positioning:</h5>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">X Coordinate:</label>
+                            <input type="number" id="positionX" placeholder="X" style="width: 100%; padding: 8px; border: 2px solid #e2e8f0; border-radius: 5px;">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Y Coordinate:</label>
+                            <input type="number" id="positionY" placeholder="Y" style="width: 100%; padding: 8px; border: 2px solid #e2e8f0; border-radius: 5px;">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Page Number:</label>
+                        {% if file_extension == 'docx' %}
+                            <input type="number" id="pageNumber" value="1" min="1" max="{{ doc_info.num_pages }}" style="width: 100%; padding: 8px; border: 2px solid #e2e8f0; border-radius: 5px;" onchange="changePage(parseInt(this.value));">
+                            <p style="font-size: 0.85em; color: #64748b; margin: 5px 0 0 0;">Total pages: {{ doc_info.num_pages }}. DOCX files use virtual pages based on content length. Signatures will be placed appropriately within the document structure.</p>
+                        {% else %}
+                            <input type="number" id="pageNumber" value="1" min="1" max="{{ doc_info.num_pages }}" style="width: 100%; padding: 8px; border: 2px solid #e2e8f0; border-radius: 5px;" onchange="changePage(parseInt(this.value));">
+                            <p style="font-size: 0.85em; color: #64748b; margin: 5px 0 0 0;">Total pages: {{ doc_info.num_pages }}. DOCX files use virtual pages based on content length. Signatures will be placed appropriately within the document structure.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; text-align: center;">
+                <button id="signButton" onclick="applySignature()" class="btn" style="padding: 12px 30px; font-size: 1.1em;" disabled>
+                    ✍️ Apply Signature
+                </button>
+                <button id="removeSignaturesButton" onclick="removeSignatures()" class="btn btn-secondary" style="margin-left: 10px; padding: 12px 20px; display: none;">
+                    🗑️ Remove Signature
+                </button>
+                <a href="{% url 'index' %}" class="btn btn-secondary" style="margin-left: 10px; padding: 12px 20px;">
+                    Cancel
+                </a>
+            </div>
+            
+            <!-- Download link container -->
+            <div id="downloadLinkContainer" style="margin-top: 15px; text-align: center; display: none;">
+            </div>
+            
+            <div style="margin-top: 25px; padding: 20px; background: #ecfdf5; border-radius: 8px; border-left: 4px solid #10b981;">
+                <h4 style="margin: 0 0 10px 0; color: #065f46;">📋 How to Sign Multiple Pages:</h4>
+                <ol style="margin: 0; padding-left: 20px; color: #065f46;">
+                    <li><strong>Select</strong> a signature from the left panel</li>
+                    <li><strong>Choose</strong> the page number where you want to place the signature</li>
+                    <li><strong>Click</strong> on the document to place it, or use Quick Position buttons</li>
+                    <li><strong>Drag</strong> signatures to reposition them as needed</li>
+                    <li><strong>Navigate</strong> between pages using the page controls to add more signatures</li>
+                    <li><strong>Review</strong> your signatures in the summary panel above</li>
+                    <li><strong>Click</strong> "Apply Signatures" to finalize all signatures</li>
+                </ol>
+                <div style="margin-top: 15px; padding: 12px; background: #d1fae5; border-radius: 6px;">
+                    <p style="margin: 0; font-size: 0.9em; color: #065f46;"><strong>💡 Pro Tip:</strong> You can place multiple signatures on the same page or distribute them across different pages. The system will preserve all your signature placements when you apply them.</p>
+                </div>
+                <p style="margin-top: 10px; font-size: 0.9em; color: #065f46;"><em>Note: Both PDF and DOCX files support multi-page signature placement. PDF files use actual page numbers, while DOCX files use virtual pages based on content length (approximately 1000 characters per page).</em></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedSignature = null;
+    let selectedSignatureUrl = null;
+    let signaturePositions = [];
+    let currentPageSignatures = {}; // Track signatures per page
+    let totalSignaturesAdded = 0;
+    let currentPage = 1; // Track current page
+    const MAX_SIGNATURES = 10; 
+    
+    // Initialize page tracking
+    document.addEventListener('DOMContentLoaded', function() {
+        // Populate page selector
+        const pageNumSelect = document.getElementById('currentPageSelector');
+        const totalPages = {{ doc_info.num_pages|default:1 }};
+        
+        // Clear existing options
+        pageNumSelect.innerHTML = '';
+        
+        // Add options for each page
+        for (let i = 1; i <= totalPages; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = i;
+            pageNumSelect.appendChild(option);
+        }
+        
+        // Set initial page
+        if (pageNumSelect.options.length > 0) {
+            changePage(parseInt(pageNumSelect.value)); // Use changePage to ensure proper synchronization
+        }
+    });
+    
+    function setPosition(side) {
+        if (!selectedSignature) {
+            showAlert('error', '✗ Please select a signature first');
+            return;
+        }
+                
+        // Get the overlay container (our coordinate system)
+        const overlayContainer = document.getElementById('signatureOverlays');
+        const overlayRect = overlayContainer.getBoundingClientRect();
+        
+        console.log('=== END POSITION PLACEMENT ===');
+        console.log('Current page:', currentPage);
+        console.log('Overlay dimensions:', {width: overlayRect.width, height: overlayRect.height});
+        
+        // Calculate coordinates for end-of-page placement
+        let x, y;
+        
+        if (side === 'left') {
+            x = 70; // 50px from left + 20px container offset
+        } else if (side === 'right') {
+            x = overlayRect.width - 250; // Account for signature width and margins
+        }
+        
+        // Place at the very bottom of the overlay area
+        y = overlayRect.height - 150; // 150px from bottom
+        
+        console.log('Calculated end-position coordinates:', {x, y});
+        
+        // Boundary checks
+        const finalX = Math.max(50, Math.min(x, overlayRect.width - 230));
+        const finalY = Math.max(50, Math.min(y, overlayRect.height - 100));
+        
+        console.log('Final coordinates after boundary check:', {finalX, finalY});
+        
+        // Create a unique ID for this specific instance of the signature
+        const uniqueSignatureId = `${selectedSignature}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+        
+        // Add signature overlay with explicit end-position flag
+        addSignatureOverlay(uniqueSignatureId, selectedSignatureUrl, finalX, finalY, currentPage, true);
+        
+        // Update position inputs
+        document.getElementById('positionX').value = Math.round(finalX);
+        document.getElementById('positionY').value = Math.round(finalY);
+        
+        // Enable sign button
+        updateSignButton();
+        
+        showAlert('success', `✓ Signature placed at ${side} side (end of page ${currentPage})!`);
+        console.log('=== END POSITION PLACEMENT COMPLETE ===');
+    }
+    
+    // Handle signature selection - Add event listeners only once
+    let signaturesInitialized = false;
+    function makeSignaturesSelectable() {
+        if (signaturesInitialized) return; // Prevent multiple initializations
+        
+        console.log('Initializing signature selection...');
+        const signatureElements = document.querySelectorAll('.signature-preview');
+        console.log('Found signature elements:', signatureElements.length);
+        
+        signatureElements.forEach(sig => {
+            sig.addEventListener('click', function(e) {
+                console.log('Signature clicked:', e);
+                const signatureId = this.dataset.signatureId;
+                const imgElement = this.querySelector('img');
+                if (!imgElement) {
+                    console.error('No image found in signature element');
+                    return;
+                }
+                const signatureUrl = imgElement.src;
+                console.log('Selecting signature:', signatureId, signatureUrl);
+                selectSignature(signatureId, signatureUrl);
+            });
+        });
+        
+        signaturesInitialized = true;
+        console.log('Signature selection initialized');
+    }
+    
+    // Drag and drop functionality for signature repositioning
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    let currentDragElement = null;
+    let currentDragSignatureId = null;
+    let dragStartedInsideSignature = false;
+    let justFinishedDragging = false;
+    let lastDragEndTime = 0;
+    let clickSuppressionActive = false;
+    
+    function startDrag(e) {
+        if (e.button !== 0) return; // Only left mouse button
+        
+        // Stop any ongoing drag operation first
+        if (isDragging) {
+            stopDrag();
+        }
+        
+        isDragging = true;
+        dragStartedInsideSignature = true; // Mark that drag started inside a signature
+        currentDragElement = e.currentTarget;
+        currentDragSignatureId = currentDragElement.dataset.signatureId;
+        
+        const rect = currentDragElement.getBoundingClientRect();
+        const overlayContainer = document.getElementById('signatureOverlays');
+        const overlayRect = overlayContainer.getBoundingClientRect();
+        
+        dragOffsetX = e.clientX - rect.left;
+        dragOffsetY = e.clientY - rect.top;
+        
+        currentDragElement.style.cursor = 'grabbing';
+        currentDragElement.style.zIndex = '1000';
+        
+        document.addEventListener('mousemove', dragMove);
+        document.addEventListener('mouseup', stopDrag);
+        
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    function startTouchDrag(e) {
+        if (e.touches.length !== 1) return;
+        
+        // Stop any ongoing drag operation first
+        if (isDragging) {
+            stopDrag();
+        }
+        
+        isDragging = true;
+        dragStartedInsideSignature = true; // Mark that drag started inside a signature
+        currentDragElement = e.currentTarget;
+        currentDragSignatureId = currentDragElement.dataset.signatureId;
+        
+        const rect = currentDragElement.getBoundingClientRect();
+        const overlayContainer = document.getElementById('signatureOverlays');
+        const overlayRect = overlayContainer.getBoundingClientRect();
+        
+        dragOffsetX = e.touches[0].clientX - rect.left;
+        dragOffsetY = e.touches[0].clientY - rect.top;
+        
+        currentDragElement.style.cursor = 'grabbing';
+        currentDragElement.style.zIndex = '1000';
+        
+        document.addEventListener('touchmove', touchDragMove, { passive: false });
+        document.addEventListener('touchend', stopDrag);
+        
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    // Throttle drag updates to prevent multiple positions
+    let lastDragUpdate = 0;
+    
+    function dragMove(e) {
+        if (!isDragging || !currentDragElement) return;
+        
+        const currentTime = Date.now();
+        // Throttle updates to 30fps (33ms)
+        if (currentTime - lastDragUpdate < 33) return;
+        lastDragUpdate = currentTime;
+        
+        const overlayContainer = document.getElementById('signatureOverlays');
+        const rect = overlayContainer.getBoundingClientRect();
+        
+        let newX = e.clientX - rect.left - dragOffsetX;
+        let newY = e.clientY - rect.top - dragOffsetY;
+        
+        // Boundary checks
+        newX = Math.max(0, Math.min(newX, rect.width - 180));
+        newY = Math.max(0, Math.min(newY, rect.height - 60));
+        
+        // Update signature position
+        currentDragElement.style.left = newX + 'px';
+        currentDragElement.style.top = newY + 'px';
+        
+        // Update label position
+        updateLabelPosition(currentDragSignatureId, newX + 90, newY + 30);
+        
+        // Update stored position (throttled)
+        updateStoredPosition(currentDragSignatureId, newX + 90, newY + 30);
+        
+        // Update position inputs
+        document.getElementById('positionX').value = Math.round(newX + 90);
+        document.getElementById('positionY').value = Math.round(newY + 30);
+        
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    // Throttle touch drag updates
+    let lastTouchDragUpdate = 0;
+    
+    function touchDragMove(e) {
+        if (!isDragging || !currentDragElement || e.touches.length !== 1) return;
+        
+        const currentTime = Date.now();
+        // Throttle updates to 30fps (33ms)
+        if (currentTime - lastTouchDragUpdate < 33) return;
+        lastTouchDragUpdate = currentTime;
+        
+        const overlayContainer = document.getElementById('signatureOverlays');
+        const rect = overlayContainer.getBoundingClientRect();
+        
+        let newX = e.touches[0].clientX - rect.left - dragOffsetX;
+        let newY = e.touches[0].clientY - rect.top - dragOffsetY;
+        
+        // Boundary checks
+        newX = Math.max(0, Math.min(newX, rect.width - 180));
+        newY = Math.max(0, Math.min(newY, rect.height - 60));
+        
+        // Update signature position
+        currentDragElement.style.left = newX + 'px';
+        currentDragElement.style.top = newY + 'px';
+        
+        // Update label position
+        updateLabelPosition(currentDragSignatureId, newX + 90, newY + 30);
+        
+        // Update stored position (throttled)
+        updateStoredPosition(currentDragSignatureId, newX + 90, newY + 30);
+        
+        // Update position inputs
+        document.getElementById('positionX').value = Math.round(newX + 90);
+        document.getElementById('positionY').value = Math.round(newY + 30);
+        
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    function stopDrag(e) {
+        if (!isDragging) return;
+        
+        isDragging = false;
+        
+        if (currentDragElement) {
+            currentDragElement.style.cursor = 'move';
+            currentDragElement.style.zIndex = 'auto';
+        }
+        
+        // Clean up event listeners with exact references
+        document.removeEventListener('mousemove', dragMove);
+        document.removeEventListener('mouseup', stopDrag);
+        document.removeEventListener('touchmove', touchDragMove);
+        document.removeEventListener('touchend', stopDrag);
+        
+        // Reset drag variables
+        currentDragElement = null;
+        currentDragSignatureId = null;
+        dragOffsetX = 0;
+        dragOffsetY = 0;
+        
+        // Reset the drag flag and set the just-finished flag
+        dragStartedInsideSignature = false;
+        justFinishedDragging = true;
+        lastDragEndTime = Date.now();
+        clickSuppressionActive = true;
+        
+        // Reset the justFinishedDragging flag after a short delay to prevent accidental clicks
+        setTimeout(() => {
+            justFinishedDragging = false;
+            clickSuppressionActive = false;
+        }, 300);
+    }
+    
+    function updateLabelPosition(signatureId, centerX, centerY) {
+        const label = document.querySelector(`.signature-label[data-signature-id="${signatureId}"]`);
+        const overlayContainer = document.getElementById('signatureOverlays');
+        const overlayWidth = overlayContainer.clientWidth;
+        
+        if (label) {
+            let labelLeft, labelTop;
+            
+            if (centerX > overlayWidth / 2) {
+                // Right side
+                labelLeft = centerX + 95;
+                labelTop = centerY + 65;
+            } else {
+                // Left side
+                labelLeft = centerX - 95;
+                labelTop = centerY + 65;
+            }
+            
+            label.style.left = labelLeft + 'px';
+            label.style.top = labelTop + 'px';
+        }
+    }
+    
+    // Update existing stored position without creating new entries
+    function updateStoredPosition(signatureId, centerX, centerY) {
+        // Find the existing position entry for this signature
+        const positionIndex = signaturePositions.findIndex(pos => pos.signatureId === signatureId);
+        if (positionIndex !== -1) {
+            // Update the existing position
+            signaturePositions[positionIndex].x = centerX;
+            signaturePositions[positionIndex].y = centerY;
+            console.log('Updated existing position for signature:', signatureId, { x: centerX, y: centerY });
+            // Update the summary display
+            updateSignaturesSummary();
+        } else {
+            console.log('Warning: Signature position not found for update:', signatureId);
+        }
+    }
+    
+    // Handle document click - Check if click is on empty space or existing signature
+    let isProcessingClick = false;
+    let lastClickTime = 0;
+    let lastSignatureId = null;
+    let lastClickPosition = { x: -1, y: -1 };
+
+    function handleDocumentClick(e) {
+        console.log('=== DOCUMENT CLICK HANDLER CALLED ===');
+        console.log('Event:', e);
+        console.log('Target:', e.target);
+        console.log('Current selectedSignature:', selectedSignature);
+        console.log('Current page:', currentPage);
+        console.log('Total pages available:', {{ doc_info.num_pages|default:1 }});
+        console.log('Signature positions count:', signaturePositions.length);
+        console.log('Total signatures added:', totalSignaturesAdded);
+        
+        // NEW: Debug page selector state
+        const pageSelector = document.getElementById('currentPageSelector');
+        console.log('Page selector value:', pageSelector ? pageSelector.value : 'NOT FOUND');
+        console.log('Page selector options count:', pageSelector ? pageSelector.options.length : 0);
+        
+        if (e.target.classList.contains('signature-overlay') || e.target.closest('.signature-overlay')) {
+            console.log('Click is on existing signature overlay, ignoring for new signature placement');
+            return; // Don't create new signature if clicking on existing signature
+        }
+        
+        if (!selectedSignature) {
+            console.log('No signature selected');
+            showAlert('error', '✗ Please select a signature first');
+            return;
+        }
+
+        const currentTime = Date.now();
+        
+        if (isProcessingClick || (currentTime - lastClickTime < 200)) {
+            console.log('Click ignored - too fast');
+            return;
+        }
+
+        isProcessingClick = true;
+        lastClickTime = currentTime;
+
+        // Get the overlay container for coordinate calculation
+        const overlayContainer = document.getElementById('signatureOverlays');
+        const rect = overlayContainer.getBoundingClientRect();
+
+        // Calculate position relative to overlay container
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+
+        // Boundary checks to ensure signatures are visible and stay within bounds
+        const halfWidth = 90;   // Half of signature width (180px)
+        const halfHeight = 30;  // Half of signature height (60px)
+        x = Math.max(halfWidth, Math.min(x, rect.width - halfWidth));
+        y = Math.max(halfHeight, Math.min(y, rect.height - halfHeight));
+
+        console.log('Calculated position:', { x, y });
+        console.log('Overlay container rect:', rect);
+
+        const uniqueSignatureId = `${selectedSignature}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+
+        // Add signature to the current page
+        addSignatureOverlay(uniqueSignatureId, selectedSignatureUrl, x, y, currentPage);
+
+        // Update position inputs
+        document.getElementById('positionX').value = Math.round(x);
+        document.getElementById('positionY').value = Math.round(y);
+
+        updateSignButton();
+
+        showAlert('success', `✓ Signature placed on page ${currentPage} at (${Math.round(x)}, ${Math.round(y)})! Drag to reposition.`);
+
+        setTimeout(() => {
+            isProcessingClick = false;
+        }, 200);
+        
+        console.log('=== END DOCUMENT CLICK HANDLER ===');
+    }
+    
+    let lastAddedSignature = { id: null, time: 0, x: -1, y: -1 };
+    
+    function addSignatureOverlay(signatureId, signatureUrl, x, y, page = null, isEndPosition = false) {
+        // Use current page if not specified
+        if (page === null) {
+            page = currentPage;
+        }
+        const currentTime = Date.now();
+        const contentArea = document.getElementById('documentContentInner');
+        
+        console.log('=== SIGNATURE ADDITION ATTEMPT ===');
+        console.log('Signature ID:', signatureId);
+        console.log('Position:', { x, y });
+        console.log('Page parameter received:', page);
+        console.log('Current page variable:', currentPage);
+        console.log('Using page:', page || currentPage);
+        console.log('Time:', currentTime);
+        console.log('Total signatures added:', totalSignaturesAdded);
+        console.log('Current signature positions:', signaturePositions.length);
+        console.log('Current page signatures:', currentPageSignatures);
+                
+        lastAddedSignature = { id: signatureId, time: currentTime, x, y };
+
+        if (totalSignaturesAdded >= MAX_SIGNATURES) {
+            console.log('Maximum signatures reached, cannot add more');
+            showAlert('error', `✗ Maximum of ${MAX_SIGNATURES} signatures reached`);
+            return;
+        }
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'signature-overlay';
+        overlay.dataset.signatureId = signatureId;
+        overlay.dataset.page = page; 
+        
+        const leftPos = x - 90; 
+        const topPos = y - 30;  
+        
+        overlay.style.left = leftPos + 'px';
+        overlay.style.top = topPos + 'px';
+        overlay.style.width = '180px';
+        overlay.style.height = '60px';
+        overlay.style.pointerEvents = 'auto';
+        overlay.style.cursor = 'move';
+        overlay.style.position = 'absolute';
+        overlay.style.border = '2px solid rgba(102, 126, 234, 0.5)'; // Visual indicator
+        overlay.style.borderRadius = '4px';
+        
+        overlay.addEventListener('mousedown', startDrag);
+        overlay.addEventListener('touchstart', startTouchDrag, { passive: false });
+        
+        console.log('Overlay positioned at:', { left: leftPos, top: topPos });
+        
+        overlay.innerHTML = `<img src="${signatureUrl}" alt="Signature" style="width: 100%; height: 100%; object-fit: contain;">`;
+        
+        // Get the signature overlays container
+        const signatureOverlaysContainer = document.getElementById('signatureOverlays');
+        signatureOverlaysContainer.appendChild(overlay);
+        
+        const label = document.createElement('div');
+        label.className = 'signature-label';
+        label.dataset.signatureId = signatureId;  // Add data attribute to match with signature
+        // Show only "Signature" text without page information or dashes
+        label.textContent = 'Signature';
+        label.style.position = 'absolute';
+        label.style.fontSize = '12px';
+        label.style.color = '#64748b';
+        label.style.fontWeight = '500';
+        label.style.pointerEvents = 'none';
+        label.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+        label.style.padding = '2px 6px';
+        label.style.borderRadius = '3px';
+        label.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+        
+        // Position label based on signature placement (centered at x,y)
+        const overlayContainer = document.getElementById('signatureOverlays');
+        const overlayWidth = overlayContainer.clientWidth;
+        let labelLeft, labelTop;
+        
+        if (x > overlayWidth / 2) {
+            labelLeft = x + 95; // x + 90 (half signature width) + 5px offset
+            labelTop = y + 65;  // y + 30 (half signature height) + 35px offset
+        } else {
+            // Left side - place label to the left of signature
+            labelLeft = x - 95; // x - 90 (half signature width) - 5px offset
+            labelTop = y + 65;  // y + 30 (half signature height) + 35px offset
+        }
+        
+        label.style.left = labelLeft + 'px';
+        label.style.top = labelTop + 'px';
+        
+        console.log('Label positioned at:', { left: labelLeft, top: labelTop });
+        
+        signatureOverlaysContainer.appendChild(label);
+        
+        signaturePositions.push({
+            element: overlay,
+            labelElement: label,  
+            signatureId: signatureId,
+            x: x, 
+            y: y,
+            page: page,
+            isEndPosition: isEndPosition
+        });
+        
+        totalSignaturesAdded++;
+        console.log('Total signatures added:', totalSignaturesAdded);
+        console.log('New signature position added:', { signatureId, x, y });
+        
+        
+        // Update the sign button to reflect the new signature count
+        updateSignButton();
+        // Update the signatures summary
+        updateSignaturesSummary();
+    }
+    
+
+    
+    function selectSignature(signatureId, signatureUrl) {
+        console.log('=== SELECT SIGNATURE CALLED ===');
+        console.log('Signature ID:', signatureId);
+        console.log('Signature URL:', signatureUrl);
+        console.log('Current selectedSignature:', selectedSignature);
+        
+        if (!signatureId || !signatureUrl) {
+            console.error('Invalid signature data:', { signatureId, signatureUrl });
+            showAlert('error', '✗ Invalid signature data');
+            return;
+        }
+        
+        selectedSignature = signatureId;
+        selectedSignatureUrl = signatureUrl;
+        
+        console.log('Updated selectedSignature:', selectedSignature);
+        console.log('Updated selectedSignatureUrl:', selectedSignatureUrl);
+        
+        // Update UI
+        document.querySelectorAll('.signature-preview').forEach(el => {
+            el.classList.remove('selected');
+        });
+        const selectedElement = document.querySelector(`[data-signature-id="${signatureId}"]`);
+        if (selectedElement) {
+            selectedElement.classList.add('selected');
+            console.log('Signature selected successfully - UI updated');
+        } else {
+            console.error('Could not find signature element with ID:', signatureId);
+        }
+        
+        updateSignButton();
+        console.log('=== END SELECT SIGNATURE ===');
+    }
+    
+    function updateSignButton() {
+        const signButton = document.getElementById('signButton');
+        const removeButton = document.getElementById('removeSignaturesButton');
+        
+        signButton.disabled = signaturePositions.length === 0;
+        
+        // Show remove button when signatures are present
+        if (signaturePositions.length > 0) {
+            removeButton.style.display = 'inline-block';
+            signButton.innerHTML = `✍️ Apply Signatures (${signaturePositions.length})`;
+        } else {
+            removeButton.style.display = 'none';
+            signButton.innerHTML = '✍️ Apply Signatures';
+        }
+    }
+    
+    // New function to update signatures summary display
+    function updateSignaturesSummary() {
+        const summaryDiv = document.getElementById('signaturesSummary');
+        const listDiv = document.getElementById('signaturesList');
+        
+        if (signaturePositions.length === 0) {
+            summaryDiv.style.display = 'none';
+            return;
+        }
+        
+        summaryDiv.style.display = 'block';
+        
+        // Group signatures by page
+        const signaturesByPage = {};
+        signaturePositions.forEach(pos => {
+            const page = pos.page;
+            console.log('Processing signature:', pos.signatureId, 'on page:', page);
+            if (!signaturesByPage[page]) {
+                signaturesByPage[page] = [];
+            }
+            signaturesByPage[page].push(pos);
+        });
+        
+        console.log('Signatures grouped by page:', signaturesByPage);
+        
+        // Generate HTML for signatures list
+        let html = '<ul style="margin: 0; padding-left: 20px;">';
+        
+        Object.keys(signaturesByPage).sort((a, b) => parseInt(a) - parseInt(b)).forEach(page => {
+            const signatures = signaturesByPage[page];
+            html += `<li style="margin-bottom: 8px;">`;
+            html += `<strong>Page ${page}:</strong> ${signatures.length} signature${signatures.length > 1 ? 's' : ''}`;
+            
+            signatures.forEach((sig, index) => {
+                html += `<br><span style="margin-left: 20px; font-size: 0.85em; color: #0c4a6e;">• Position: (${Math.round(sig.x)}, ${Math.round(sig.y)})`;
+                
+                // Add remove button for individual signatures
+                html += ` <button onclick="removeSignature('${sig.signatureId}')" style="margin-left: 10px; background: #ef4444; color: white; border: none; padding: 2px 6px; border-radius: 3px; font-size: 0.8em; cursor: pointer;">×</button>`;
+                html += '</span>';
+            });
+            
+            html += '</li>';
+        });
+        
+        html += '</ul>';
+        
+        // Add total count
+        html += `<div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #0ea5e9; font-weight: 500;">`;
+        html += `Total signatures: <strong>${signaturePositions.length}</strong> on ${Object.keys(signaturesByPage).length} page${Object.keys(signaturesByPage).length > 1 ? 's' : ''}`;
+        html += '</div>';
+        
+        listDiv.innerHTML = html;
+    }
+    
+    // Function to remove individual signature
+    function removeSignature(signatureId) {
+        // Find the signature position
+        const positionIndex = signaturePositions.findIndex(pos => pos.signatureId === signatureId);
+        if (positionIndex !== -1) {
+            const signatureToRemove = signaturePositions[positionIndex];
+            
+            // Remove DOM elements
+            if (signatureToRemove.element && signatureToRemove.element.parentNode) {
+                signatureToRemove.element.parentNode.removeChild(signatureToRemove.element);
+            }
+            if (signatureToRemove.labelElement && signatureToRemove.labelElement.parentNode) {
+                signatureToRemove.labelElement.parentNode.removeChild(signatureToRemove.labelElement);
+            }
+            
+            // Remove from array
+            signaturePositions.splice(positionIndex, 1);
+            totalSignaturesAdded--;
+            
+            // Update displays
+            updateSignButton();
+            updateSignaturesSummary();
+            updatePageView();
+            
+            showAlert('success', `✓ Signature removed from page ${signatureToRemove.page}`);
+        }
+    }
+    
+    // Page navigation functions
+    function changePage(pageNum) {
+        // Enable page navigation for both PDF and DOCX files
+        console.log('=== PAGE CHANGE REQUEST ===');
+        console.log('Requested page:', pageNum);
+        console.log('Current page before change:', currentPage);
+        
+        currentPage = parseInt(pageNum);
+        
+        console.log('Current page after change:', currentPage);
+        console.log('Page selector value after change:', document.getElementById('currentPageSelector').value);
+        
+        updatePageView();
+        
+        // Show alert about page change
+        showAlert('info', `✓ Switched to page ${currentPage}`);
+    }
+    
+    function previousPage() {
+        // Enable page navigation for both PDF and DOCX files
+        if (currentPage > 1) {
+            changePage(currentPage - 1);
+        }
+    }
+    
+    function nextPage() {
+        // Enable page navigation for both PDF and DOCX files
+        const maxPages = document.getElementById('currentPageSelector').options.length;
+        if (currentPage < maxPages) {
+            changePage(currentPage + 1);
+        }
+    }
+    
+    function updatePageView() {
+        // Enable page navigation for both PDF and DOCX files
+        console.log('=== UPDATE PAGE VIEW ===');
+        console.log('Current page:', currentPage);
+        console.log('Total signatures:', signaturePositions.length);
+        
+        // Hide all document pages except current page
+        const documentPages = document.querySelectorAll('.document-page');
+        documentPages.forEach((page, index) => {
+            const pageNumber = parseInt(page.getAttribute('data-page-number')) || (index + 1);
+            if (pageNumber === currentPage) {
+                page.style.display = 'block';
+                console.log(`Showing document page ${pageNumber}`);
+            } else {
+                page.style.display = 'none';
+                console.log(`Hiding document page ${pageNumber}`);
+            }
+        });
+        
+        // Hide all signatures not on current page
+        signaturePositions.forEach((pos, index) => {
+            console.log(`Signature ${index}: ID=${pos.signatureId}, Page=${pos.page}, CurrentPage=${currentPage}`);
+            if (pos.page !== currentPage) {
+                pos.element.style.display = 'none';
+                pos.labelElement.style.display = 'none';
+                console.log(`Hiding signature ${pos.signatureId} (page ${pos.page})`);
+            } else {
+                pos.element.style.display = 'block';
+                pos.labelElement.style.display = 'block';
+                console.log(`Showing signature ${pos.signatureId} (page ${pos.page})`);
+            }
+        });
+        
+        // Update page selector
+        document.getElementById('currentPageSelector').value = currentPage;
+        
+        // Update the page number input field
+        document.getElementById('pageNumber').value = currentPage;
+        
+        // Update signature count for current page
+        const currentSignatures = signaturePositions.filter(pos => pos.page === currentPage);
+        updateSignButton();
+        
+        // Update signatures summary
+        updateSignaturesSummary();
+        
+        showAlert('info', `✓ Showing page ${currentPage}. Found ${currentSignatures.length} signature(s) on this page.`);
+    }
+    
+    // Override addSignatureOverlay to respect current page
+    function removeSignatures() {
+        // Remove all signature overlays from the document
+        signaturePositions.forEach(pos => {
+            if (pos.element && pos.element.parentNode) {
+                pos.element.parentNode.removeChild(pos.element);
+            }
+            if (pos.labelElement && pos.labelElement.parentNode) {
+                pos.labelElement.parentNode.removeChild(pos.labelElement);
+            }
+        });
+        
+        // Clear all tracking arrays
+        signaturePositions = [];
+        currentPageSignatures = {};
+        totalSignaturesAdded = 0;
+        
+        // Reset position inputs
+        document.getElementById('positionX').value = '';
+        document.getElementById('positionY').value = '';
+        
+        // Update the sign button
+        updateSignButton();
+        
+        // Update page view to refresh display
+        updatePageView();
+        
+        // Update signatures summary
+        updateSignaturesSummary();
+        
+        showAlert('success', '✓ All signatures removed. You can now place a new signature.');
+    }
+    
+    // Prevent multiple signature applications
+    let isApplyingSignature = false;
+    
+    function applySignature() {
+        // Small delay to ensure everything is loaded
+        setTimeout(() => {
+            console.log('=== CSRF DEBUG ===');
+            console.log('Meta tag CSRF token:', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'));
+            console.log('Template CSRF token:', '{{ csrf_token }}');
+            console.log('Combined token used:', document.querySelector('meta[name="csrf-token"]').getAttribute('content') || '{{ csrf_token }}');
+            console.log('Cookies:', document.cookie);
+            console.log('==============');
+            
+            // Prevent multiple rapid clicks
+            if (isApplyingSignature) {
+                console.log('Signature application already in progress');
+                return;
+            }
+            
+            if (signaturePositions.length === 0) {
+                showAlert('error', '✗ Please place at least one signature on the document');
+                return;
+            }
+            
+            isApplyingSignature = true;
+        
+        // Get preview area dimensions for coordinate mapping
+        const overlayContainer = document.getElementById('signatureOverlays');
+        const previewWidth = overlayContainer.offsetWidth;
+        const previewHeight = overlayContainer.offsetHeight;
+        
+        // Send all signatures to the backend with end-position flags
+        const signaturesToSend = signaturePositions.map(pos => ({
+            signature_id: pos.signatureId.split('_')[0],
+            x: pos.x,
+            y: pos.y,
+            page: pos.page,  // Use the actual page number
+            is_end_position: pos.isEndPosition || false
+        }));
+        
+        // Extract the first signature ID for the main request
+        if (signaturePositions.length === 0) {
+            showAlert('error', '✗ Please place at least one signature on the document');
+            isApplyingSignature = false;
+            signButton.disabled = false;
+            signButton.innerHTML = '✍️ Apply Signature';
+            return;
+        }
+        
+        const firstSignature = signaturePositions[0];
+        const originalSignatureId = firstSignature.signatureId.split('_')[0];
+        const x = firstSignature.x;
+        const y = firstSignature.y;
+        const page = firstSignature.page;  // Use the page from the first signature
+        
+        // Debug logging for coordinate mapping
+        console.log('Applying signature with coordinates:', { x: x, y: y, page: page });
+        console.log('Preview dimensions:', { width: previewWidth, height: previewHeight });
+        console.log('Original signature ID:', originalSignatureId);
+        
+        const data = {
+            document_id: '{{ document.id }}',
+            signature_id: originalSignatureId,
+            x: x,
+            y: y,
+            page: page,
+            signatures: signaturesToSend,
+            // Send preview area dimensions for accurate coordinate mapping
+            preview_width: previewWidth,
+            preview_height: previewHeight
+
+        };
+        
+        console.log('Sending data to backend:', data);
+        
+        // Disable button and show processing state
+        const signButton = document.getElementById('signButton');
+        const originalOnclick = signButton.onclick;
+        signButton.disabled = true;
+        signButton.innerHTML = '⏳ Applying signature...';
+        signButton.onclick = null; // Remove click handler temporarily
+        
+        // Resolve CSRF token: prefer cookie, then hidden input, then meta, then template fallback
+        const pageCsrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const pageCsrfInput = document.getElementById('csrfmiddlewaretoken_input') || document.querySelector('[name=csrfmiddlewaretoken]');
+        const cookieToken = (typeof getCookie === 'function') ? getCookie('csrftoken') : null;
+        const csrfHeader = cookieToken || (pageCsrfInput && pageCsrfInput.value) || (pageCsrfMeta && pageCsrfMeta.getAttribute('content')) || '{{ csrf_token }}';
+
+        // Ensure CSRF cookie/token are set by fetching the endpoint first
+        fetch('{% url "get_csrf" %}', { method: 'GET', credentials: 'same-origin' })
+        .catch(err => { console.warn('CSRF prefetch failed (ignored):', err); })
+        .then(() => {
+            return fetch('{% url "apply_signature" %}', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfHeader
+                },
+                body: JSON.stringify(data)
+            });
+        })
+        .then(response => {
+            // Log the CSRF token for debugging
+            const csrfToken = (typeof getCookie === 'function' ? getCookie('csrftoken') : null) || document.querySelector('meta[name="csrf-token"]').getAttribute('content') || '{{ csrf_token }}';
+            console.log('CSRF Token used:', csrfToken);
+            console.log('Response status:', response.status);
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                showAlert('success', `✓ ${data.message}`);
+
+                // If backend requested a redirect (e.g., back to admin), follow it
+                if (data.redirect) {
+                    // Give user a brief moment to read the success message
+                    setTimeout(() => {
+                        window.location.href = data.redirect;
+                    }, 800);
+                    return;
+                }
+
+                // Otherwise show download options
+                showDownloadOptions(data.signed_document_id, data.download_options);
+            } else {
+                showAlert('error', `✗ Error: ${data.error}`);
+                // Restore button state on error
+                signButton.disabled = false;
+                signButton.innerHTML = '✍️ Apply Signature';
+                signButton.onclick = originalOnclick;
+                isApplyingSignature = false;
+            }
+        })
+        .catch(error => {
+            showAlert('error', `✗ Error applying signature: ${error}`);
+            // Restore button state on error
+            signButton.disabled = false;
+            signButton.innerHTML = '✍️ Apply Signature';
+            signButton.onclick = originalOnclick;
+            isApplyingSignature = false;
+        });
+    }, 100); // Close setTimeout
+}
+
+
+    
+    function showAlert(type, message) {
+        const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+        document.getElementById('alertContainer').innerHTML = 
+            `<div class="alert ${alertClass}" style="margin-bottom: 20px;">${message}</div>`;
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+        setTimeout(() => {
+            const alert = document.querySelector('.alert');
+            if (alert) {
+                alert.remove();
+            }
+        }, 5000);
+    }
+    
+    function showDownloadOptions(signedDocId, downloadOptions) {
+        // Create download options container
+        const downloadContainer = document.createElement('div');
+        downloadContainer.id = 'downloadOptions';
+        downloadContainer.className = 'download-options-container';
+        downloadContainer.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 10000;
+            text-align: center;
+            min-width: 300px;
+        `;
+        
+        downloadContainer.innerHTML = `
+            <h3 style="margin-top: 0; color: #333;">Download Signed Document</h3>
+            <p style="margin: 15px 0; color: #666;">Choose your preferred format:</p>
+            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
+                <button onclick="downloadDocument('${signedDocId}', 'pdf')" 
+                        style="background: #dc3545; color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                    📄 Download PDF
+                </button>
+                <button onclick="downloadDocument('${signedDocId}', 'docx')" 
+                        style="background: #28a745; color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                    📝 Download DOCX
+                </button>
+            </div>
+            <button onclick="closeDownloadOptions()" 
+                    style="margin-top: 20px; background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 3px; cursor: pointer;">
+                Close
+            </button>
+        `;
+        
+        // Add overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'downloadOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+        `;
+        
+        document.body.appendChild(overlay);
+        document.body.appendChild(downloadContainer);
+        
+        // Disable scrolling
+        document.body.style.overflow = 'hidden';
+    }
+    
+    function closeDownloadOptions() {
+        const overlay = document.getElementById('downloadOverlay');
+        const container = document.getElementById('downloadOptions');
+        
+        if (overlay) overlay.remove();
+        if (container) container.remove();
+        
+        // Re-enable scrolling
+        document.body.style.overflow = '';
+    }
+    
+    // Download document with specified format
+    function downloadDocument(signedDocId, format) {
+        // Close the download options
+        closeDownloadOptions();
+        
+        // Show downloading message
+        showAlert('success', `⏳ Downloading ${format.toUpperCase()} file...`);
+        
+        // Redirect to download endpoint with format parameter
+        window.location.href = `/download/${signedDocId}/${format}/`;
+    }
+    
+    // Initialize when DOM is loaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            makeSignaturesSelectable();
+            console.log('Signatures initialized');
+        });
+    } else {
+        makeSignaturesSelectable();
+        console.log('Signatures initialized');
+    }
+    
+    // Ensure signature functionality is available
+    window.onload = function() {
+        console.log('Window loaded, signature functionality ready');
+        // Double check that event handlers are attached
+        setTimeout(function() {
+            const contentInner = document.getElementById('documentContentInner');
+            if (contentInner && !contentInner.getAttribute('data-initialized')) {
+                contentInner.setAttribute('data-initialized', 'true');
+                console.log('Event handlers checked');
+            }
+        }, 100);
+    };
+</script>
+{% endblock %}
