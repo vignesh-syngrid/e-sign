@@ -139,8 +139,8 @@ EMAIL_HOST_PASSWORD = 'wlik ayle gqro iquv'
 # COMPANY_SENDER_PASSWORD=nvuukygccgixctbn
 
 # Email settings for document invitations
-DEFAULT_FROM_EMAIL = 'manikandan.dev.it@gmail.com'
-SERVER_EMAIL = 'manikandan.dev.it@gmail.com'
+DEFAULT_FROM_EMAIL = 'rajanvigneesh56@gmail.com'
+SERVER_EMAIL = 'rajanvigneesh56@gmail.com'
 SITE_NAME = 'E-Signature System'
 
 # For production, set your actual domain
