@@ -132,12 +132,15 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'Super Admin Email'
-EMAIL_HOST_PASSWORD = '*****'
+EMAIL_HOST_USER = 'rajanvigneesh56@gmail.com'
+EMAIL_HOST_PASSWORD = 'wlik ayle gqro iquv'
+
+# COMPANY_SENDER_MAIL=manikandan.dev.it@gmail.com
+# COMPANY_SENDER_PASSWORD=nvuukygccgixctbn
 
 # Email settings for document invitations
-DEFAULT_FROM_EMAIL = 'Super Admin Email'
-SERVER_EMAIL = 'Super Admin Email'
+DEFAULT_FROM_EMAIL = 'manikandan.dev.it@gmail.com'
+SERVER_EMAIL = 'manikandan.dev.it@gmail.com'
 SITE_NAME = 'E-Signature System'
 
 # For production, set your actual domain
