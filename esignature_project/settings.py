@@ -125,7 +125,10 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # Super Admin Notification Settings
 SUPER_ADMIN_NOTIFICATIONS_ENABLED = True
 # List of additional email addresses to receive notifications (optional)
-SUPER_ADMIN_ADDITIONAL_EMAILS = ['aswinkumardoffl@gmail.com']
+# SUPER_ADMIN_ADDITIONAL_EMAILS = ['aswinkumardoffl@gmail.com']
+SUPER_ADMIN_ADDITIONAL_EMAILS = ['vigneshkumarsyngrid@gmail.com']
+
+
 
 # Production SMTP settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
