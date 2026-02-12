@@ -23,6 +23,25 @@ import base64
 from PIL import Image
 import io
 
+
+###///// for temporary admin credientials login create
+
+from django.contrib.auth import get_user_model
+from django.http import HttpResponse
+
+def create_admin(request):
+    User = get_user_model()
+    if not User.objects.filter(username="admin").exists():
+        User.objects.create_superuser("admin", "admin@gmail.com", "admin123")
+        return HttpResponse("Superuser created")
+    return HttpResponse("Admin already exists")
+
+
+
+
+
+
+
 @csrf_protect
 def custom_login(request):
     """Custom login view with proper CSRF handling"""
